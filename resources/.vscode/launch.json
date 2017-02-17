@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "TTDebug",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceRoot}/dummy.js",
+            "stopOnEntry": true,
+            "cwd": "${workspaceRoot}",
+            "runtimeExecutable": "${workspaceRoot}/bins/node.exe",
+            "runtimeArgs": [
+                "--nolazy", 
+                "--replay-debug=./"
+            ],
+            "console": "internalConsole"
+        }
+    ]
+}
