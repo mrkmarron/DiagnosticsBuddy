@@ -211,56 +211,6 @@ function copyReplayDebugResources(targetDir, callback) {
     });
 }
 
-//enumerate all the .js files and replace the one that matches 
-//diagnostics/deployDiagnostics.js with the contents of dignostics/debugDiagnostics.js
-function updateDiagnosticsJSCode(targetDir, callback) {
-    console.log('Updating diagnostics resources.');
-
-    fs.readdir(targetDir, function (err, files) {
-        if (err) {
-            console.error('Could not read files from: ' + targetDir);
-            callback(err);
-        }
-
-        var jslist = files.filter(function (value) {
-            return path.extname(value) === '.js';
-        });
-
-        var dbgreplace = '/*debugger TTD_DEBUG_BREAKPOINT*/;';
-        var replacewbuff = Buffer.from('debugger; /*TTD_DEBUG_BREAKPOINT*/', 'ucs2')
-
-        var jsproclist = jslist.map(function (value) {
-            return function (cb) {
-                var file = path.resolve(targetDir, value);
-                fs.readFile(file, function (perr, contents) {
-                    if (perr) {
-                        console.error('Failed to read a js file when updating diagnostics library: ' + file);
-                        cb(perr);
-                    }
-
-                    if (contents.indexOf(dbgreplace, 0, 'ucs2') !== -1) {
-                        console.log(`Updating diagnostics code in file ${file}`)
-
-                        var rpos = contents.indexOf(dbgreplace, 0, 'ucs2');
-                        while (rpos !== -1) {
-                            replacewbuff.copy(contents, rpos, 0, replacewbuff.length);
-                            rpos = contents.indexOf(dbgreplace, 0, 'ucs2');
-                        }
-
-                        fs.writeFileSync(file, contents);
-                    }
-
-                    cb(null);
-                });
-            }
-        });
-
-        async.parallel(jsproclist, function (err, results) {
-            callback(err);
-        });
-    });
-}
-
 function processTraceDownload(remoteFileName, targetDir) {
     var tempfile = path.resolve(__dirname, "templog.trc");
 
@@ -273,9 +223,6 @@ function processTraceDownload(remoteFileName, targetDir) {
         },
         function (callback) {
             copyReplayDebugResources(targetDir, callback);
-        },
-        function (callback) {
-            updateDiagnosticsJSCode(targetDir, callback);
         },
         function (callback) {
             console.log('Deleting temp file: ' + tempfile);
@@ -318,9 +265,6 @@ function processTraceInitializeForVSCode(traceName) {
     var actionPipeline = [
         function (callback) {
             copyReplayDebugResources(traceName, callback);
-        },
-        function (callback) {
-            updateDiagnosticsJSCode(traceName, callback);
         }
     ];
 
