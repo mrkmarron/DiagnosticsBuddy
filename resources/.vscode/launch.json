@@ -8,7 +8,6 @@
             "program": "${workspaceRoot}/dummy.js",
             "stopOnEntry": true,
             "cwd": "${workspaceRoot}",
-            "runtimeExecutable": "${workspaceRoot}/bins/node.exe",
             "runtimeArgs": [
                 "--nolazy", 
                 "--replay-debug=./"
