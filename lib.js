@@ -1,10 +1,9 @@
 "use strict";
 
 var async = require('async');
-var archiver = require('archiver');
+var childProcess = require('child_process');
 var storage = require('azure-storage');
 var console = require('console');
-var decompress = require('decompress-zip');
 var fs = require('fs');
 var fsextra = require('fs-extra');
 var path = require('path');
@@ -14,7 +13,15 @@ var process = require('process');
 //Shared functionality
 
 function loadRemoteAccessInfo() {
-    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'azureconfig.json')));
+    var res = undefined;
+    try {
+        res = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'azureconfig.json')));
+    }
+    catch (ex) {
+        ;
+    }
+
+    return res;
 }
 
 function dirLooksLikeTrace(trgtDir) {
@@ -38,93 +45,144 @@ function uploadFileToAzure(localFile, remoteFile, callback) {
     console.log('Uploading data to ' + remoteFile + ' from ' + localFile);
 
     var accessInfo = loadRemoteAccessInfo();
-    var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-    azureService.createFileFromLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
-        if (err) {
-            console.error('Failed to upload trace to Azure storage: ' + err);
-        }
+    if (!accessInfo) {
+        callback('Failed to load Azure config.');
+    }
+    else {
+        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+        azureService.createFileFromLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
+            if (err) {
+                console.error('Failed to upload trace to Azure storage: ' + err);
+            }
 
-        callback(err);
-    });
+            callback(err);
+        });
+    }
 }
 
 function downloadFileFromAzure(remoteFile, localFile, callback) {
     console.log('Downloading data from ' + remoteFile + ' to ' + localFile);
 
     var accessInfo = loadRemoteAccessInfo();
-    var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-    azureService.getFileToLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
-        if (err) {
-            console.error('Failed to download trace from Azure storage: ' + err);
-        }
+    if (!accessInfo) {
+        callback('Failed to load Azure config.');
+    }
+    else {
+        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+        azureService.getFileToLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
+            if (err) {
+                console.error('Failed to download trace from Azure storage: ' + err);
+            }
 
-        callback(err);
-    });
+            callback(err);
+        });
+    }
 }
 
 function removeFileFromAzure(remoteFile, callback) {
     console.log('Removing file from ' + remoteFile);
 
     var accessInfo = loadRemoteAccessInfo();
-    var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-    azureService.deleteFileIfExists('cloud-traces', '', remoteFile, function (err) {
-        if (err) {
-            console.error('Failed to remove trace from Azure storage: ' + err);
-        }
+    if (!accessInfo) {
+        callback('Failed to load Azure config.');
+    }
+    else {
+        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+        azureService.deleteFileIfExists('cloud-traces', '', remoteFile, function (err) {
+            if (err) {
+                console.error('Failed to remove trace from Azure storage: ' + err);
+            }
 
-        callback(err);
-    });
+            callback(err);
+        });
+    }
+}
+
+function buildZipCmd(targetFile) {
+    var zipexe = (process.platform === 'win32') ? 'c:\\Program Files\\7-Zip\\7z.exe' : 'zip';
+    if (!fs.existsSync(zipexe)) {
+        console.error('Could not find zip executable: ' + zipexe);
+        return undefined;
+    }
+
+    var zipcmd = undefined;
+    if (process.platform === 'win32') {
+        zipcmd = `"${zipexe}" a -bd -tzip ${targetFile} *`;
+    }
+    else {
+        zipcmd = `${zipexe} -q ${targetFile} *`;
+    }
+
+    return zipcmd;
 }
 
 //Run compression of trace dir into temp file
 function logCompress(targetFile, traceDirName, callback) {
     console.log('Compressing ' + traceDirName + ' into: ' + targetFile);
 
-    var output = fs.createWriteStream(targetFile);
-    var archive = archiver('zip');
+    var zipcmd = buildZipCmd(targetFile);
+    if (!zipcmd) {
+        callback("Failed to zip trace", null);
+    }
+    else {
+        var startTime = new Date();
+        var err = null;
+        try {
+            childProcess.execSync(zipcmd, { cwd: traceDirName });
+            console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
+        }
+        catch (ex) {
+            err = ex;
+        }
 
-    var startTime = new Date();
-    output.on('close', function () {
-        console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
-        callback(null);
-    });
+        callback(err);
+    }
+}
 
-    archive.on('error', function (err) {
-        console.error('Compress error.');
-        callback(err, null);
-    });
+function buildUnZipCmd(traceFile, traceDirName) {
+    var zipexe = (process.platform === 'win32') ? 'c:\\Program Files\\7-Zip\\7z.exe' : 'unzip';
+    if (!fs.existsSync(zipexe)) {
+        console.error('Could not find zip executable: ' + zipexe);
+        return undefined;
+    }
 
-    archive.pipe(output);
+    var zipcmd = undefined;
+    if (process.platform === 'win32') {
+        zipcmd = `"${zipexe}" e ${traceFile} -o${traceDirName}`;
+    }
+    else {
+        zipcmd = `${zipexe} -q ${targetFile} -d ${traceDirName}`;
+    }
 
-    archive.directory(traceDirName, './');
-    archive.finalize();
+    return zipcmd;
 }
 
 function logDecompress(traceFile, traceDirName, callback) {
     console.log('Decompressing ' + traceFile + ' into: ' + traceDirName);
 
-    var unzipper = new decompress(traceFile);
+    var unzipcmd = buildUnZipCmd(traceFile, traceDirName);
+    if (!unzipcmd) {
+        callback("Failed to zip trace", null);
+    }
+    else {
+        var startTime = new Date();
+        var err = null;
+        try {
+            childProcess.execSync(unzipcmd);
+            console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
+        }
+        catch (ex) {
+            err = ex;
+        }
 
-    var startTime = new Date();
-    unzipper.on('extract', function (log) {
-        console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
-        callback(null);
-    });
-
-    unzipper.on('error', function (err) {
-        console.error('Decompress error.');
-        callback(err, null);
-    });
-
-    unzipper.extract({
-        'path': traceDirName
-    });
+        callback(err);
+    }
 }
 
 //////////////
 //Upload functionality
 
-//Ensure the trace dir looks like a TTD log dir. Normalize the path name and invoke cb with it.
+//Ensure the trace dir looks like a TTD log dir.
 function ensureTraceDir(traceDirName) {
     var dname = path.resolve(traceDirName);
     var lname = path.resolve(dname, 'ttdlog.log');
@@ -187,7 +245,7 @@ function ensureTraceTargetDir(optTargetDirName) {
         trgtDir = path.resolve(optTargetDirName);
     }
 
-    if(!dirLooksLikeTrace(trgtDir)) {
+    if (!dirLooksLikeTrace(trgtDir)) {
         return undefined;
     }
 
@@ -258,7 +316,7 @@ function processTraceRemove(traceName) {
 exports.processTraceRemove = processTraceRemove;
 
 function processTraceInitializeForVSCode(traceName) {
-    if(!dirLooksLikeTrace(traceName)) {
+    if (!dirLooksLikeTrace(traceName)) {
         return false;
     }
 
