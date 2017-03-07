@@ -4,11 +4,13 @@ var path = require('path');
 var process = require('process');
 var childProcess = require('child_process');
 
+var launchExe = (process.platform === 'win32') ? 'node.exe' : 'node'; 
+
 function uploadTraceSync(resolvedPath) {
     try {
         var tracename = path.basename(resolvedPath) + '.trc';
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Sync).\n`);
-        var cmd = `node.exe ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath}`;
+        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath}`;
         childProcess.execSync(cmd);
 
         process.stderr.write(`Completed upload of ${resolvedPath}\n`);
@@ -22,7 +24,7 @@ function uploadTraceAsync(resolvedPath) {
     try {
         var tracename = path.basename(path.dirname(resolvedPath)) + '_' + path.basename(resolvedPath) + '.trc'
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Async).\n`);
-        var cmd = `node.exe ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath} -l ${tracename}`;
+        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath} -l ${tracename}`;
         childProcess.exec(cmd, function (err, stdout, stderr) {
             if (err) {
                 process.stderr.write(`Failed to upload ${cmd} -- err is ${err} stderr is ${stderr} stdout is ${stdout}\n`);
