@@ -99,15 +99,7 @@ function removeFileFromAzure(remoteFile, callback) {
 }
 
 function buildZipCmd(targetFile) {
-    var zipcmd = undefined;
-    if (process.platform === 'win32') {
-        zipcmd = `"c:\\Program Files\\7-Zip\\7z.exe" a -bd -tzip ${targetFile} *`;
-    }
-    else {
-        zipcmd = `zip -q ${targetFile} *`;
-    }
-
-    return zipcmd;
+    return `"c:\\Program Files\\7-Zip\\7z.exe" a -bd -tzip ${targetFile} *`;
 }
 
 //Run compression of trace dir into temp file
@@ -134,15 +126,7 @@ function logCompress(targetFile, traceDirName, callback) {
 }
 
 function buildUnZipCmd(traceFile, traceDirName) {
-    var zipcmd = undefined;
-    if (process.platform === 'win32') {
-        zipcmd = `"c:\\Program Files\\7-Zip\\7z.exe" e ${traceFile} -o${traceDirName}`;
-    }
-    else {
-        zipcmd = `unzip -q ${targetFile} -d ${traceDirName}`;
-    }
-
-    return zipcmd;
+    return `"c:\\Program Files\\7-Zip\\7z.exe" e ${traceFile} -o${traceDirName}`;
 }
 
 function logDecompress(traceFile, traceDirName, callback) {
