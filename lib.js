@@ -99,18 +99,12 @@ function removeFileFromAzure(remoteFile, callback) {
 }
 
 function buildZipCmd(targetFile) {
-    var zipexe = (process.platform === 'win32') ? 'c:\\Program Files\\7-Zip\\7z.exe' : 'zip';
-    if (!fs.existsSync(zipexe)) {
-        console.error('Could not find zip executable: ' + zipexe);
-        return undefined;
-    }
-
     var zipcmd = undefined;
     if (process.platform === 'win32') {
-        zipcmd = `"${zipexe}" a -bd -tzip ${targetFile} *`;
+        zipcmd = `"c:\\Program Files\\7-Zip\\7z.exe" a -bd -tzip ${targetFile} *`;
     }
     else {
-        zipcmd = `${zipexe} -q ${targetFile} *`;
+        zipcmd = `zip -q ${targetFile} *`;
     }
 
     return zipcmd;
@@ -140,18 +134,12 @@ function logCompress(targetFile, traceDirName, callback) {
 }
 
 function buildUnZipCmd(traceFile, traceDirName) {
-    var zipexe = (process.platform === 'win32') ? 'c:\\Program Files\\7-Zip\\7z.exe' : 'unzip';
-    if (!fs.existsSync(zipexe)) {
-        console.error('Could not find zip executable: ' + zipexe);
-        return undefined;
-    }
-
     var zipcmd = undefined;
     if (process.platform === 'win32') {
-        zipcmd = `"${zipexe}" e ${traceFile} -o${traceDirName}`;
+        zipcmd = `"c:\\Program Files\\7-Zip\\7z.exe" e ${traceFile} -o${traceDirName}`;
     }
     else {
-        zipcmd = `${zipexe} -q ${targetFile} -d ${traceDirName}`;
+        zipcmd = `unzip -q ${targetFile} -d ${traceDirName}`;
     }
 
     return zipcmd;
