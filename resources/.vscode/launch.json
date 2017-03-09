@@ -5,6 +5,7 @@
             "name": "Trace Debug",
             "type": "node",
             "request": "launch",
+            "stopOnEntry": true,
             "program": "${workspaceRoot}/dummy.js",
             "windows": { "runtimeExecutable": "nvs.cmd" },
             "osx": { "runtimeExecutable": "nvs" },
@@ -12,7 +13,7 @@
             "runtimeArgs": [
                 "chakracore-nightly",
                 "--nolazy", 
-                "-break-first",
+                "--break-first",
                 "--replay-debug=./"
             ],
             "console": "internalConsole"
