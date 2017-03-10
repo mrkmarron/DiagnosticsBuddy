@@ -11,6 +11,7 @@
             "osx": { "runtimeExecutable": "nvs" },
             "linux": { "runtimeExecutable": "nvs" },
             "runtimeArgs": [
+                "run",
                 "chakracore-nightly",
                 "--nolazy", 
                 "--break-first",
