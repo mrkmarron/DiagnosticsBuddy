@@ -261,9 +261,9 @@ function processTraceDownload(remoteFileName, targetDir) {
         function (callback) {
             logDecompress(tempfile, targetDir, callback);
         },
-        function (callback) {
-            copyReplayDebugResources(targetDir, callback);
-        },
+        //function (callback) {
+        //    copyReplayDebugResources(targetDir, callback);
+        //},
         function (callback) {
             console.log('Deleting temp file: ' + tempfile);
             fs.unlink(tempfile, function (err) {
