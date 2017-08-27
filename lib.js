@@ -8,6 +8,7 @@ var fs = require('fs');
 var fsextra = require('fs-extra');
 var path = require('path');
 var process = require('process');
+var zlib = require('zlib');
 
 //////////////
 //Shared functionality
@@ -46,15 +47,11 @@ function uploadFileToAzure(localFile, remoteFile, callback) {
 
     var accessInfo = loadRemoteAccessInfo();
     if (!accessInfo) {
-        callback('Failed to load Azure config.');
+        callback(new Error('Failed to load Azure config.'));
     }
     else {
         var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.createFileFromLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
-            if (err) {
-                console.error('Failed to upload trace to Azure storage: ' + err);
-            }
-
+        azureService.createFileFromLocalFile('cloud-traces', '', remoteFile, localFile, (err, res) => {
             callback(err);
         });
     }
@@ -65,15 +62,11 @@ function downloadFileFromAzure(remoteFile, localFile, callback) {
 
     var accessInfo = loadRemoteAccessInfo();
     if (!accessInfo) {
-        callback('Failed to load Azure config.');
+        callback(new Error('Failed to load Azure config.'));
     }
     else {
         var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.getFileToLocalFile('cloud-traces', '', remoteFile, localFile, function (err, res) {
-            if (err) {
-                console.error('Failed to download trace from Azure storage: ' + err);
-            }
-
+        azureService.getFileToLocalFile('cloud-traces', '', remoteFile, localFile, (err, res) => {
             callback(err);
         });
     }
@@ -84,60 +77,136 @@ function removeFileFromAzure(remoteFile, callback) {
 
     var accessInfo = loadRemoteAccessInfo();
     if (!accessInfo) {
-        callback('Failed to load Azure config.');
+        callback(new Error('Failed to load Azure config.'));
     }
     else {
         var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.deleteFileIfExists('cloud-traces', '', remoteFile, function (err) {
-            if (err) {
-                console.error('Failed to remove trace from Azure storage: ' + err);
-            }
-
+        azureService.deleteFileIfExists('cloud-traces', '', remoteFile, (err) => {
             callback(err);
         });
     }
 }
 
-function buildZipCmd(targetFile) {
-    if (process.platform == 'win32') {
-        return `"c:\\Program Files\\7-Zip\\7z.exe" a -bd -tzip ${targetFile} *`;
-    }
-    else {
-        return `zip -X ${targetFile} *`;
-    }
+//////////////
+//Compression functionality
+
+const emptySizeString = '                ';
+
+function reserveEntryHeader(file, filesize, outFD, cb) {
+    const filesizeString = filesize.toString();
+    if (filesizeString.length > emptySizeString.length) { cb(new Error('File is too large to process.')); }
+
+    const wstr = path.basename(file) + '@' + emptySizeString + '#';
+    fs.write(outFD, wstr, cb);
+}
+
+function writeEntryHeader(file, compressedSize, offset, outFD, cb) {
+    const wstr = path.basename(file) + '@' + compressedSize + '#';
+    fs.write(outFD, wstr, offset, cb);
+}
+
+function writeEntryData(file, outFD, origOffset, cb) {
+    let writtenLength = headerLength;
+    fs.stat(file, (serr, stats) => {
+        if (serr) { cb(serr); }
+
+        fs.open(file, "r", (oerr, inFD) => {
+            if (oerr) { cb(oerr); }
+
+            let processingInfo = { filesize: stats.size, remainingsize: stats.size, compressedsize: 0 };
+            let buffer = new Buffer(1024);
+            async.whilst(
+                () => { return processingInfo.remainingsize > 0; },
+                (pcb) => { writeBlock(inFD, outFD, buffer, processingInfo, pcb); },
+                (err) => { writeEntryHeader(file, processingInfo.compressedsize, origOffset, outFD, cb); }
+            );
+        });
+    });
+}
+
+function writeBlock(inFD, outFD, buffer, processingInfo, cb) {
+    fs.read(inFD, buffer, 0, buffer.length, (rerr, readLength) => {
+        if (rerr) { cb(rerr); }
+
+        zlib.deflate(buffer, (zerr, cbuffer) => {
+            fs.write(outFD, cbuffer, 0, cbuffer.length, (werr, writtenLength) => {
+                if (werr) { cb(werr); }
+                if (cbuffer.length !== writtenLength) { cb(new Error('Read and write lengths are different!')); }
+
+                processingInfo.remainingsize -= readLength;
+                processingInfo.compressedsize += writtenLength;
+
+                cb(null);
+            });
+        });
+    });
+}
+
+function addSingleFileToOutput(file, outFD, cb) {
+    fs.fstat(outFD, (fserr, fstats) => {
+        if (fserr) { cb(fserr); }
+
+        let origOffset = fstats.size;
+        fs.stat(file, (serr, stats) => {
+            if (serr) { cb(serr); }
+
+            reserveEntryHeader(file, stats.size, outFD, (err) => {
+                writeEntryData(file, outFD, origOffset, cb);
+            });
+        });
+    });
+}
+
+function compressTrace(traceDir, targetFile) {
+    fs.readdir(traceDir, (derr, files) => {
+        if (derr) {
+            console.error('Failed to read directory contents: ' + derr);
+            process.exit(1);
+        }
+
+        fs.open(targetFile, "w", (oerr, fd) => {
+            if (oerr) {
+                console.error('Failed to open output file: ' + oerr);
+                process.exit(1);
+            }
+
+            let fileOffset = 0;
+            const filecbArray = files.map((file) => {
+                return function (cb) {
+                    addSingleFileToOutput(file, fd, cb);
+                }
+            });
+
+            async.series(
+                filecbArray,
+                function (err) {
+                    outStream.close();
+                    if (err) {
+                        console.error('Failed to read directory contents: ' + err);
+                        process.exit(1);
+                    }
+
+                    console.log('All files compressed into output.');
+                    process.exit(0)
+                }
+            );
+        });
+    });
 }
 
 //Run compression of trace dir into temp file
 function logCompress(targetFile, traceDirName, callback) {
     console.log('Compressing ' + traceDirName + ' into: ' + targetFile);
 
-    var zipcmd = buildZipCmd(targetFile);
-    if (!zipcmd) {
-        callback("Failed to zip trace", null);
-    }
-    else {
-        var startTime = new Date();
-        var err = null;
-        try {
-            childProcess.execSync(zipcmd, { cwd: traceDirName });
-            console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
-        }
-        catch (ex) {
-            err = ex;
-        }
+    var zipcmd = `node ${dirname}${path.sep}app.js -compress ${traceDirName} -into ${targetFile}`;
+    var startTime = new Date();
+    childProcess.exec(zipcmd, { cwd: traceDirName, env: {DO_TTD_RECORD: 0} }, (err) => {
+        console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
 
         callback(err);
-    }
+    });
 }
-
-function buildUnZipCmd(traceFile, traceDirName) {
-    if (process.platform == 'win32') {
-        return `"c:\\Program Files\\7-Zip\\7z.exe" e ${traceFile} -o${traceDirName}`;
-    }
-    else {
-        return `unzip ${traceFile} -d ${traceDirName}`;
-    }
-}
+exports.logCompress = logCompress;
 
 function logDecompress(traceFile, traceDirName, callback) {
     console.log('Decompressing ' + traceFile + ' into: ' + traceDirName);
