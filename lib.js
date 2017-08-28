@@ -90,66 +90,79 @@ function removeFileFromAzure(remoteFile, callback) {
 //////////////
 //Compression functionality
 
+const headerEntrySize = 32 + 32 + 32; //name startpos length\n
+
 function traceCompressor(traceDir, targetFile, completeCallBack) {
-    fs.open(targetFile, "w", (openerr, outFD) => {
-        if (openerr) { completeCallBack(openerr); }
+    fs.readdir(traceDir, (direrr, compressFiles) => {
+        if (direrr) { return completeCallBack(direrr); }
 
-        fs.readdir(traceDir, (direrr, compressFiles) => {
-            if (direrr) { completeCallBack(direrr); }
+        const headerblockLength = 32 + compressFiles.length * headerEntrySize;
+        let headerInfo = compressFiles.length.toString();
+        while (headerInfo.length < 32) {
+            headerInfo += ' ';
+        }
+        headerInfo += '\n';
 
-            const headerblockLength = compressFiles.reduce((value, file) => {
-                return value + (file.length + 16 + 16);
-            }, 0);
+        function extendHeader(file, startPos, length) {
+            hval = file + ' ' + startPos + ' ' + length;
+            assert(hval < headerEntrySize);
 
-            fs.write(outFD, headerblockLength.toString() + "%", (herr, initialheaderpos) => {
-                if (herr) { completeCallBack(herr); }
+            while (hval.length < headerEntrySize) {
+                hval += ' ';
+            }
+            hval += '\n';
 
-                const currentHeaderPos = initialheaderpos;
-                const currentDataPos = currentHeaderPos + headerblockLength;
+            headerInfo += hval;
+        }
 
-                function writeHeader(file, compressedSize, cb) {
-                    fs.stat(file, (serr, stats) => {
-                        if (serr) { cb(serr); }
+        function writeFinalHeaders(file, cb) {
+            fs.open(targetFile, 'a', (wfherr, fd) => {
+                if (wfherr) { return completeCallBack(wfherr); }
 
-                        const wstr = path.basename(file) + '@' + currentHeaderPos + ':' + compressedSize + '#';
-                        currentHeaderPos += wstr.length;
-                        fs.write(outFD, wstr, offset, cb);
-                    });
-                }
+                const headerBuff = new Buffer(headerInfo);
+                fs.write(fd, headerBuff, completeCallBack);
+            });
+        }
 
-                function writeData(file, cb) {
-                    const inp = fs.createReadStream(file);
-                    const out = fs.createWriteStream(outFile, { flags: "a", start: currentDataPos });
+        let currentDataPos = headerblockLength;
+        fs.writeFile(targetFile, new Buffer(headerblockLength), (ierr) => {
+            if (ierr) { return completeCallBack(ierr); }
 
-                    out.on('close', () => {
-                        currentDataPos += out.bytesWritten;
-                        writeHeader(file, out.bytesWritten, cb);
-                    });
-                    out.on('error', (perr) => {
-                        cb(perr);
-                    });
+            function writeData(file, cb) {
+                const inp = fs.createReadStream(file);
+                const out = fs.createWriteStream(outFile, { flags: "a" });
 
-                    const defl = zlib.createDeflate();
-                    inp.pipe(defl).pipe(out);
-                }
-
-                const filecbArray = compressFiles.map((file) => {
-                    return function (cb) {
-                        writeData(file, cb);
-                    }
+                out.on('close', () => {
+                    extendHeader(file, currentDataPos, out.bytesWritten);
+                    currentDataPos += out.bytesWritten;
+                    cb(null);
+                });
+                out.on('error', (perr) => {
+                    cb(perr);
                 });
 
-                async.series(
-                    filecbArray,
-                    function (err) {
-                        fs.close(outFD);
-                        completeCallBack(err);
-                    }
-                );
+                const defl = zlib.createDeflate();
+                inp.pipe(defl).pipe(out);
+            }
+
+            const filecbArray = compressFiles.map((file) => {
+                return function (cb) {
+                    writeData(file, cb);
+                }
             });
+
+            async.series(
+                filecbArray,
+                function (err) {
+                    if (err) { return completeCallBack(err); }
+
+                    writeFinalHeaders(targetFile, completeCallBack);
+                }
+            );
         });
     });
 }
+exports.traceCompressorDirect = traceCompressor;
 
 //Run compression of trace dir into temp file
 function logCompress(targetFile, traceDirName, callback) {
@@ -168,6 +181,67 @@ exports.logCompressExecAsync = logCompress;
 
 asdf
 
+function traceDecompressor(traceFile, targetDir, completeCallBack) {
+    function extractHeaderInfo(cb) {
+        fs.open(traceFile, 'r', (oerr, fd) => {
+            if (oerr) { return completeCallBack(oerr); }
+
+            const psizeBuff = new Buffer(32);
+            fs.read(fd, psizeBuff, 0, psizeBuff.length, 0, (sizeerr, sizebytes, sizebuff) => {
+                if (sizeerr) { return cb(sizeerr); }
+
+                const headerblockLength = Number.parseInt(sizebuff.toString());
+                if (headerblockLength === NaN) { return cb(new Error('Failed to parse header info')); }
+
+                const pheadersBuff = new Buffer(headerblockLength);
+                fs.read(fd, pheadersBuff, 0, pheadersBuff.length, 0, (herr, headersBytes, headersBuff) => {
+                    if (herr) { return cb(herr); }
+
+                    const headers = headersBuff.toString().split('\n').shift().map((headerStr) => {
+                        const components = headerStr.split(/\s+/);
+                        return { file: components[0], startOffset: components[1], length: components[2] };
+                    });
+
+                    fs.close(fs, (cerr) => {
+                        if (sizeerr) { return cb(cerr); }
+                        cb(null, headers);
+                    });
+                });
+            });
+        });
+    }
+
+    function extractFile(headerInfo, cb) {
+        const inp = fs.createReadStream(traceFile, { start: headerInfo.startOffset, end: headerInfo.startOffset + headerInfo.length - 1 });
+        const out = fs.createWriteStream(path.join(targetDir, headerInfo.file));
+
+        out.on('close', () => {
+            cb(null);
+        });
+        out.on('error', (perr) => {
+            cb(perr);
+        });
+
+        const defl = zlib.createDeflate();
+        inp.pipe(defl).pipe(out);
+    }
+
+    extractHeaderInfo((err, headers) => {
+        const filecbArray = headers.map((header) => {
+            return function (cb) {
+                extractFile(header, cb);
+            }
+        });
+
+        async.series(
+            filecbArray,
+            function (err) {
+                return completeCallBack(err);
+            }
+        );
+    });
+}
+exports.traceDecompressorDirect = traceDecompressor;
 
 function logDecompress(traceFile, traceDirName, callback) {
     console.log('Decompressing ' + traceFile + ' into: ' + traceDirName);
