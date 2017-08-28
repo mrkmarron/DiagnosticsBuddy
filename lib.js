@@ -90,106 +90,63 @@ function removeFileFromAzure(remoteFile, callback) {
 //////////////
 //Compression functionality
 
-const emptySizeString = '                ';
+function traceCompressor(traceDir, targetFile, completeCallBack) {
+    fs.open(targetFile, "w", (openerr, outFD) => {
+        if (openerr) { completeCallBack(openerr); }
 
-function reserveEntryHeader(file, filesize, outFD, cb) {
-    const filesizeString = filesize.toString();
-    if (filesizeString.length > emptySizeString.length) { cb(new Error('File is too large to process.')); }
+        fs.readdir(traceDir, (direrr, compressFiles) => {
+            if (direrr) { completeCallBack(direrr); }
 
-    const wstr = path.basename(file) + '@' + emptySizeString + '#';
-    fs.write(outFD, wstr, cb);
-}
+            const headerblockLength = compressFiles.reduce((value, file) => {
+                return value + (file.length + 16 + 16);
+            }, 0);
 
-function writeEntryHeader(file, compressedSize, offset, outFD, cb) {
-    const wstr = path.basename(file) + '@' + compressedSize + '#';
-    fs.write(outFD, wstr, offset, cb);
-}
+            fs.write(outFD, headerblockLength.toString() + "%", (herr, initialheaderpos) => {
+                if (herr) { completeCallBack(herr); }
 
-function writeEntryData(file, outFD, origOffset, cb) {
-    let writtenLength = headerLength;
-    fs.stat(file, (serr, stats) => {
-        if (serr) { cb(serr); }
+                const currentHeaderPos = initialheaderpos;
+                const currentDataPos = currentHeaderPos + headerblockLength;
 
-        fs.open(file, "r", (oerr, inFD) => {
-            if (oerr) { cb(oerr); }
+                function writeHeader(file, compressedSize, cb) {
+                    fs.stat(file, (serr, stats) => {
+                        if (serr) { cb(serr); }
 
-            let processingInfo = { filesize: stats.size, remainingsize: stats.size, compressedsize: 0 };
-            let buffer = new Buffer(1024);
-            async.whilst(
-                () => { return processingInfo.remainingsize > 0; },
-                (pcb) => { writeBlock(inFD, outFD, buffer, processingInfo, pcb); },
-                (err) => { writeEntryHeader(file, processingInfo.compressedsize, origOffset, outFD, cb); }
-            );
-        });
-    });
-}
-
-function writeBlock(inFD, outFD, buffer, processingInfo, cb) {
-    fs.read(inFD, buffer, 0, buffer.length, (rerr, readLength) => {
-        if (rerr) { cb(rerr); }
-
-        zlib.deflate(buffer, (zerr, cbuffer) => {
-            fs.write(outFD, cbuffer, 0, cbuffer.length, (werr, writtenLength) => {
-                if (werr) { cb(werr); }
-                if (cbuffer.length !== writtenLength) { cb(new Error('Read and write lengths are different!')); }
-
-                processingInfo.remainingsize -= readLength;
-                processingInfo.compressedsize += writtenLength;
-
-                cb(null);
-            });
-        });
-    });
-}
-
-function addSingleFileToOutput(file, outFD, cb) {
-    fs.fstat(outFD, (fserr, fstats) => {
-        if (fserr) { cb(fserr); }
-
-        let origOffset = fstats.size;
-        fs.stat(file, (serr, stats) => {
-            if (serr) { cb(serr); }
-
-            reserveEntryHeader(file, stats.size, outFD, (err) => {
-                writeEntryData(file, outFD, origOffset, cb);
-            });
-        });
-    });
-}
-
-function compressTrace(traceDir, targetFile) {
-    fs.readdir(traceDir, (derr, files) => {
-        if (derr) {
-            console.error('Failed to read directory contents: ' + derr);
-            process.exit(1);
-        }
-
-        fs.open(targetFile, "w", (oerr, fd) => {
-            if (oerr) {
-                console.error('Failed to open output file: ' + oerr);
-                process.exit(1);
-            }
-
-            let fileOffset = 0;
-            const filecbArray = files.map((file) => {
-                return function (cb) {
-                    addSingleFileToOutput(file, fd, cb);
+                        const wstr = path.basename(file) + '@' + currentHeaderPos + ':' + compressedSize + '#';
+                        currentHeaderPos += wstr.length;
+                        fs.write(outFD, wstr, offset, cb);
+                    });
                 }
-            });
 
-            async.series(
-                filecbArray,
-                function (err) {
-                    outStream.close();
-                    if (err) {
-                        console.error('Failed to read directory contents: ' + err);
-                        process.exit(1);
+                function writeData(file, cb) {
+                    const inp = fs.createReadStream(file);
+                    const out = fs.createWriteStream(outFile, { flags: "a", start: currentDataPos });
+
+                    out.on('close', () => {
+                        currentDataPos += out.bytesWritten;
+                        writeHeader(file, out.bytesWritten, cb);
+                    });
+                    out.on('error', (perr) => {
+                        cb(perr);
+                    });
+
+                    const defl = zlib.createDeflate();
+                    inp.pipe(defl).pipe(out);
+                }
+
+                const filecbArray = compressFiles.map((file) => {
+                    return function (cb) {
+                        writeData(file, cb);
                     }
+                });
 
-                    console.log('All files compressed into output.');
-                    process.exit(0)
-                }
-            );
+                async.series(
+                    filecbArray,
+                    function (err) {
+                        fs.close(outFD);
+                        completeCallBack(err);
+                    }
+                );
+            });
         });
     });
 }
@@ -200,35 +157,30 @@ function logCompress(targetFile, traceDirName, callback) {
 
     var zipcmd = `node ${dirname}${path.sep}app.js -compress ${traceDirName} -into ${targetFile}`;
     var startTime = new Date();
-    childProcess.exec(zipcmd, { cwd: traceDirName, env: {DO_TTD_RECORD: 0} }, (err) => {
+    childProcess.exec(zipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
         console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
 
         callback(err);
     });
 }
-exports.logCompress = logCompress;
+exports.logCompressExecAsync = logCompress;
+
+
+asdf
+
 
 function logDecompress(traceFile, traceDirName, callback) {
     console.log('Decompressing ' + traceFile + ' into: ' + traceDirName);
 
-    var unzipcmd = buildUnZipCmd(traceFile, traceDirName);
-    if (!unzipcmd) {
-        callback("Failed to zip trace", null);
-    }
-    else {
-        var startTime = new Date();
-        var err = null;
-        try {
-            childProcess.execSync(unzipcmd);
-            console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
-        }
-        catch (ex) {
-            err = ex;
-        }
+    var unzipcmd = `node ${dirname}${path.sep}app.js -uncompress ${targetFile} -into ${traceDirName}`;
+    var startTime = new Date();
+    childProcess.exec(unzipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
+        console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
 
         callback(err);
-    }
+    });
 }
+exports.logDecompressExecAsync = logDecompress;
 
 //////////////
 //Upload functionality
