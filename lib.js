@@ -165,7 +165,7 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
 exports.traceCompressorDirect = traceCompressor;
 
 //Run compression of trace dir into temp file
-function logCompress(targetFile, traceDirName, callback) {
+function logCompress(targetFile, traceDirName) {
     console.log('Compressing ' + traceDirName + ' into: ' + targetFile);
 
     var zipcmd = `node ${dirname}${path.sep}app.js -compress ${traceDirName} -into ${targetFile}`;
@@ -173,13 +173,12 @@ function logCompress(targetFile, traceDirName, callback) {
     childProcess.exec(zipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
         console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
 
-        callback(err);
+        if(err) {
+            console.error('Failed with error: ' + err); 
+        }
     });
 }
 exports.logCompressExecAsync = logCompress;
-
-
-asdf
 
 function traceDecompressor(traceFile, targetDir, completeCallBack) {
     function extractHeaderInfo(cb) {
@@ -243,7 +242,7 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
 }
 exports.traceDecompressorDirect = traceDecompressor;
 
-function logDecompress(traceFile, traceDirName, callback) {
+function logDecompress(traceFile, traceDirName) {
     console.log('Decompressing ' + traceFile + ' into: ' + traceDirName);
 
     var unzipcmd = `node ${dirname}${path.sep}app.js -uncompress ${targetFile} -into ${traceDirName}`;
@@ -251,7 +250,9 @@ function logDecompress(traceFile, traceDirName, callback) {
     childProcess.exec(unzipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
         console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
 
-        callback(err);
+        if(err) {
+            console.error('Failed with error: ' + err); 
+        }
     });
 }
 exports.logDecompressExecAsync = logDecompress;
@@ -391,28 +392,3 @@ function processTraceRemove(traceName) {
     });
 }
 exports.processTraceRemove = processTraceRemove;
-
-function processTraceInitializeForVSCode(traceName) {
-    if (!dirLooksLikeTrace(traceName)) {
-        return false;
-    }
-
-    var actionPipeline = [
-        function (callback) {
-            copyReplayDebugResources(traceName, callback);
-        }
-    ];
-
-    async.series(actionPipeline, function (err, results) {
-        if (err) {
-            console.error('Initialize trace directory for VSCode launch failed with: ' + err);
-            process.exit(1);
-        }
-        else {
-            console.log('Initialize trace directory for VSCode launch succeeded.');
-        }
-    });
-
-    return true;
-}
-exports.processTraceInitializeForVSCode = processTraceInitializeForVSCode;
