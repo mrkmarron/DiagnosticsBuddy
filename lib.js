@@ -57,8 +57,8 @@ function removeFileFromAzure(remoteFile, callback) {
     }
     else {
         var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.deleteFileIfExists(accessInfo.remoteShare, '', remoteFile, (err) => {
-            callback(err);
+        azureService.deleteFileIfExists(accessInfo.remoteShare, '', remoteFile, (err, result) => {
+            callback(err, result);
         });
     }
 }

@@ -7,6 +7,7 @@ var fsextra = require('fs-extra');
 var lib = require('./lib.js');
 var path = require('path');
 var process = require('process');
+var tmp = require('tmp');
 
 commander
     .version('0.0.1')
@@ -22,74 +23,102 @@ commander
 
 if (commander.upload) {
     var traceDir = ensureTraceDir(commander.upload);
-    processTraceUpload(traceDir, commander.location || detaultTraceFile);
+    const startTime = new Date();
+    processTraceUpload(traceDir, commander.location, (err) => {
+        if (err) {
+            process.stderr.write('Failed to upload trace: ' + err + '\n');
+            process.exit(1);
+        }
+        else {
+            process.stdout.write(`Completed upload in ${(new Date() - startTime) / 1000}s.\n`);
+        }
+    });
 }
 else if (commander.download) {
     var remoteFileName = commander.download;
     var targetDir = ensureTraceTargetDir(commander.location);
     if (targetDir) {
-        processTraceDownload(remoteFileName, targetDir);
+        const startTime = new Date();
+        processTraceDownload(remoteFileName, targetDir, (err) => {
+            if (err) {
+                process.stderr.write('Failed to upload trace: ' + err + '\n');
+                process.exit(1);
+            }
+            else {
+                process.stdout.write(`Completed download in ${(new Date() - startTime) / 1000}s.\n`);
+            }
+        });
     }
     else {
-        console.error(`${commander.location} is not empty and does not look like an old trace location.`);
-        console.error(`--Skipping download to avoid any accidental data loss.`)
+        process.stderr.write(`${commander.location} is not empty and does not look like an old trace location.\n`);
+        process.stderr.write(`--Skipping download to avoid any accidental data loss.\n`)
     }
 }
 else if (commander.remove) {
-    lib.removeFileFromAzure(commander.remove, (err) => {
-        if(err) {
-            console.error('Failed with error: ' + err);
+    lib.removeFileFromAzure(commander.remove, (err, result) => {
+        if (err) {
+            process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
         }
 
-        console.log('Trace removed.');
+        if(result) {
+            process.stdout.write(`Deleted trace.\n`);
+        }
+        else {
+            process.stdout.write(`No trace with the name "${commander.remove}" was found.\n`);
+        }
     });
 }
 else if (commander.list) {
     lib.listFilesFromAzure((err, files) => {
-        if(err) {
-            console.error('Failed with error: ' + err);
+        if (err) {
+            process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
         }
 
-        console.log('Traces on remote:');
+        process.stdout.write('Traces on remote:\n');
         files.map((file) => {
-            console.log(file);
+            process.stdout.write('    ' + file + '\n');
         });
     });
 }
 else if (commander.compress) {
     var traceDir = ensureTraceDir(commander.compress);
-    if(!commander.location) {
-        console.error('Must specify a location to write the trace using --location.')
+    if (!commander.location) {
+        process.stderr.write('Must specify a location to write the trace using --location.\n')
     }
 
+    const startTime = new Date();
     lib.traceCompressor(traceDir, commander.location, (err) => {
         if (err) {
-            console.error('Failed with error: ' + err);
+            process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
         }
+
+        process.stdout.write(`Completed compression in ${(new Date() - startTime) / 1000}s.\n`);
     });
 }
 else if (commander.decompress) {
     var traceDir = ensureTraceTargetDir(commander.location);
     if (traceDir) {
+        const startTime = new Date();
         lib.traceDecompressor(commander.decompress, traceDir, (err) => {
             if (err) {
-                console.error('Failed with error: ' + err);
+                process.stderr.write('Failed with error: ' + err + '\n');
                 process.exit(1);
             }
+
+            process.stdout.write(`Completed decompression in ${(new Date() - startTime) / 1000}s.\n`);
         });
     }
     else {
-        console.error(`${commander.location} is not empty and does not look like an old trace location.`);
-        console.error(`--Skipping download to avoid any accidental data loss.`)
+        process.stderr.write(`${commander.location} is not empty and does not look like an old trace location.\n`);
+        process.stderr.write(`--Skipping download to avoid any accidental data loss.\n`)
     }
 }
 else {
     commander.help();
 }
-
 
 ////////////////////////////////
 
@@ -146,63 +175,39 @@ function ensureTraceTargetDir(optTargetDirName) {
 }
 
 //Do the processing for the trace upload
-function processTraceUpload(traceDirName, remoteName) {
-    var tempfile = path.resolve(path.dirname(traceDirName), path.basename(traceDirName) + '_' + 'templog.trc');
-    var remoteFile = remoteName || path.basename(traceDirName) + '.trc';
+function processTraceUpload(traceDirName, remoteName, completecallback) {
+    tmp.file({ postfix: '.trc' }, (err, tempfile) => {
+        if (err) { return completecallback(err) };
 
-    var actionPipeline = [
-        function (callback) {
-            lib.traceCompressor(traceDirName, tempfile, callback);
-        },
-        function (callback) {
-            lib.uploadFileToAzure(tempfile, remoteFile, callback);
-        },
-        function (callback) {
-            //console.log('Deleting temp file: ' + tempfile);
-            fs.unlink(tempfile, function (err) {
-                //if it doesn't exist or something goes wrong that is fine just eat the error
-                callback(null);
-            });
-        }
-    ];
+        var remoteFile = remoteName || path.basename(traceDirName) + '.trc';
 
-    async.series(actionPipeline, function (err, results) {
-        if (err) {
-            console.error('Upload failed with: ' + err);
-            process.exit(1);
-        }
-        else {
-            console.log('Upload succeeded.');
-        }
+        var actionPipeline = [
+            function (callback) {
+                lib.traceCompressor(traceDirName, tempfile, callback);
+            },
+            function (callback) {
+                lib.uploadFileToAzure(tempfile, remoteFile, callback);
+            }
+        ];
+
+        async.series(actionPipeline, completecallback);
     });
 }
 
-function processTraceDownload(remoteFileName, targetDir) {
-    var tempfile = path.resolve(__dirname, "templog.trc");
+function processTraceDownload(remoteFileName, targetDir, completecallback) {
+    //tmp cleans up automatically on completion
+    tmp.file({ postfix: '.trc' }, (err, tempfile) => {
+        if (err) { return completecallback(err) };
 
-    var actionPipeline = [
-        function (callback) {
-            lib.downloadFileFromAzure(path.basename(remoteFileName), tempfile, callback);
-        },
-        function (callback) {
-            lib.traceDecompressor(tempfile, targetDir, callback);
-        },
-        function (callback) {
-            //console.log('Deleting temp file: ' + tempfile);
-            fs.unlink(tempfile, function (err) {
-                //if it doesn't exist or something goes wrong that is fine just eat the error
-                callback(null);
-            });
-        }
-    ];
+        var actionPipeline = [
+            function (callback) {
+                lib.downloadFileFromAzure(path.basename(remoteFileName), tempfile, callback);
+            },
+            function (callback) {
+                lib.traceDecompressor(tempfile, targetDir, callback);
+            }
+        ];
 
-    async.series(actionPipeline, function (err, results) {
-        if (err) {
-            console.error('Download and process failed with: ' + err);
-            process.exit(1);
-        }
-        else {
-            console.log('Download and process succeeded.');
-        }
+        async.series(actionPipeline, completecallback);
     });
 }
