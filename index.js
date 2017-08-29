@@ -4,16 +4,17 @@ var path = require('path');
 var process = require('process');
 var childProcess = require('child_process');
 
-var launchExe = (process.platform === 'win32') ? 'node.exe' : 'node'; 
+var launchExe = (process.platform === 'win32') ? 'node.exe' : 'node';
 
 function uploadTraceSync(resolvedPath) {
     try {
         var tracename = path.basename(resolvedPath) + '.trc';
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Sync).\n`);
-        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath}`;
-        childProcess.execSync(cmd);
+        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} --upload ${resolvedPath}`;
+        var startTime = new Date();
+        childProcess.execSync(cmd, { env: { DO_TTD_RECORD: 0 } });
 
-        process.stderr.write(`Completed upload of ${resolvedPath}\n`);
+        process.stderr.write(`Completed upload of ${resolvedPath} in ${(new Date() - startTime) / 1000}s.\n`);
     }
     catch (ex) {
         process.stderr.write(`    Faild to write error trace -- ${ex}\n`);
@@ -24,14 +25,15 @@ function uploadTraceAsync(resolvedPath) {
     try {
         var tracename = path.basename(path.dirname(resolvedPath)) + '_' + path.basename(resolvedPath) + '.trc'
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Async).\n`);
-        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} -u ${resolvedPath} -l ${tracename}`;
-        childProcess.exec(cmd, function (err, stdout, stderr) {
+        var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} --upload ${resolvedPath} --location ${tracename}`;
+        var startTime = new Date();
+        childProcess.exec(cmd, { env: { DO_TTD_RECORD: 0 } }, function (err, stdout, stderr) {
             if (err) {
                 process.stderr.write(`Failed to upload ${cmd} -- err is ${err} stderr is ${stderr} stdout is ${stdout}\n`);
                 process.exit(1);
             }
 
-            process.stderr.write(`Completed upload of ${resolvedPath}\n`);
+            process.stderr.write(`Completed upload of ${resolvedPath} in ${(new Date() - startTime) / 1000}s.\n`);
         });
     }
     catch (ex) {
@@ -40,6 +42,6 @@ function uploadTraceAsync(resolvedPath) {
 }
 
 exports.AzureManager = {
-"uploadTraceSync": uploadTraceSync,
-"uploadTraceAsync": uploadTraceAsync
+    "uploadTraceSync": uploadTraceSync,
+    "uploadTraceAsync": uploadTraceAsync
 };
