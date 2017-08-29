@@ -7,11 +7,21 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Launch",
+            "name": "Launch Compress",
             "program": "${workspaceRoot}/app.js",
             "args": [
                 "--compress", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt/",
                 "--location", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt.trc"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch Decompress",
+            "program": "${workspaceRoot}/app.js",
+            "args": [
+                "--decompress", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt.trc",
+                "--location", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt_extracted"
             ]
         }
     ]

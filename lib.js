@@ -1,5 +1,6 @@
 "use strict";
 
+var assert = require('assert');
 var async = require('async');
 var childProcess = require('child_process');
 var storage = require('azure-storage');
@@ -28,7 +29,8 @@ function loadRemoteAccessInfo() {
 function dirLooksLikeTrace(trgtDir) {
     try {
         if (fs.existsSync(trgtDir)) {
-            var contents = fs.readdirSync(trgtDir);
+            var contents = fs.readdirSync(trgtDir).filter((value) => !value.startsWith('.'));
+
             if (contents.length !== 0 && contents.indexOf('ttdlog.log') === -1) {
                 //This doesn't look like an old trace directory!
                 //We don't want to accidentally blow away user data.
@@ -98,16 +100,16 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
 
         const headerblockLength = 32 + compressFiles.length * headerEntrySize;
         let headerInfo = compressFiles.length.toString();
-        while (headerInfo.length < 32) {
+        while (headerInfo.length < 32 - 1) {
             headerInfo += ' ';
         }
         headerInfo += '\n';
 
         function extendHeader(file, startPos, length) {
-            hval = file + ' ' + startPos + ' ' + length;
-            assert(hval < headerEntrySize);
+            let hval = path.basename(file) + ' ' + startPos + ' ' + length;
+            assert(hval.length < headerEntrySize - 1);
 
-            while (hval.length < headerEntrySize) {
+            while (hval.length < headerEntrySize - 1) {
                 hval += ' ';
             }
             hval += '\n';
@@ -120,7 +122,9 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
                 if (wfherr) { return completeCallBack(wfherr); }
 
                 const headerBuff = new Buffer(headerInfo);
-                fs.write(fd, headerBuff, completeCallBack);
+                assert(headerBuff.length === headerInfo.length && headerInfo.length === headerblockLength);
+
+                fs.write(fd, headerBuff, 0, headerBuff.length, 0, completeCallBack);
             });
         }
 
@@ -130,7 +134,7 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
 
             function writeData(file, cb) {
                 const inp = fs.createReadStream(file);
-                const out = fs.createWriteStream(outFile, { flags: "a" });
+                const out = fs.createWriteStream(targetFile, { flags: "a" });
 
                 out.on('close', () => {
                     extendHeader(file, currentDataPos, out.bytesWritten);
@@ -147,7 +151,7 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
 
             const filecbArray = compressFiles.map((file) => {
                 return function (cb) {
-                    writeData(file, cb);
+                    writeData(path.join(traceDir, file), cb);
                 }
             });
 
@@ -173,8 +177,8 @@ function logCompress(targetFile, traceDirName) {
     childProcess.exec(zipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
         console.log(`Compress complete in ${(new Date() - startTime) / 1000}s.`);
 
-        if(err) {
-            console.error('Failed with error: ' + err); 
+        if (err) {
+            console.error('Failed with error: ' + err);
         }
     });
 }
@@ -189,19 +193,25 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
             fs.read(fd, psizeBuff, 0, psizeBuff.length, 0, (sizeerr, sizebytes, sizebuff) => {
                 if (sizeerr) { return cb(sizeerr); }
 
-                const headerblockLength = Number.parseInt(sizebuff.toString());
-                if (headerblockLength === NaN) { return cb(new Error('Failed to parse header info')); }
+                const headerblockCount = Number.parseInt(sizebuff.toString());
+                if (headerblockCount === NaN) { return cb(new Error('Failed to parse header info')); }
 
+                const headerblockLength = 32 + headerblockCount * headerEntrySize;
                 const pheadersBuff = new Buffer(headerblockLength);
                 fs.read(fd, pheadersBuff, 0, pheadersBuff.length, 0, (herr, headersBytes, headersBuff) => {
                     if (herr) { return cb(herr); }
 
-                    const headers = headersBuff.toString().split('\n').shift().map((headerStr) => {
+                    const headersLines = headersBuff.toString().split('\n');
+                    const headers = headersLines.slice(1, headersLines.length - 1).map((headerStr) => {
                         const components = headerStr.split(/\s+/);
-                        return { file: components[0], startOffset: components[1], length: components[2] };
+                        const startNumber = Number.parseInt(components[1]);
+                        const lengthNumber = Number.parseInt(components[2]);
+                        if (startNumber === NaN || lengthNumber === NaN) { return cb(new Error('Failed to parse file entry.')); }
+
+                        return { file: components[0], startOffset: startNumber, length: lengthNumber };
                     });
 
-                    fs.close(fs, (cerr) => {
+                    fs.close(fd, (cerr) => {
                         if (sizeerr) { return cb(cerr); }
                         cb(null, headers);
                     });
@@ -221,7 +231,7 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
             cb(perr);
         });
 
-        const defl = zlib.createDeflate();
+        const defl = zlib.createInflate();
         inp.pipe(defl).pipe(out);
     }
 
@@ -250,8 +260,8 @@ function logDecompress(traceFile, traceDirName) {
     childProcess.exec(unzipcmd, { env: { DO_TTD_RECORD: 0 } }, (err) => {
         console.log(`Decompress complete in ${(new Date() - startTime) / 1000}s.`);
 
-        if(err) {
-            console.error('Failed with error: ' + err); 
+        if (err) {
+            console.error('Failed with error: ' + err);
         }
     });
 }
