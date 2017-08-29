@@ -1,5 +1,5 @@
 {
-    "remotePath": "[Your remote file store path here]",
-    "remoteUser": "[Your remote user name here]",
-    "storageKey": "[Your remote storage key here]"
+    "remoteShate": "[Your remote file share name here]",
+    "remoteUser":  "[Your remote user name here]",
+    "storageKey":  "[Your remote storage key here]"
 }

@@ -1,5 +1,6 @@
 "use strict";
 
+var async = require('async');
 var commander = require('commander');
 var fs = require('fs');
 var fsextra = require('fs-extra');
@@ -40,14 +41,21 @@ else if (commander.remove) {
             console.error('Failed with error: ' + err);
             process.exit(1);
         }
+
+        console.log('Trace removed.');
     });
 }
 else if (commander.list) {
-    lib.listFilesFromAzure((err) => {
+    lib.listFilesFromAzure((err, files) => {
         if(err) {
             console.error('Failed with error: ' + err);
             process.exit(1);
         }
+
+        console.log('Traces on remote:');
+        files.map((file) => {
+            console.log(file);
+        });
     });
 }
 else if (commander.compress) {

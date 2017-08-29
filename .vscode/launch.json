@@ -23,6 +23,15 @@
                 "--decompress", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt.trc",
                 "--location", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt_extracted"
             ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Launch List",
+            "program": "${workspaceRoot}/app.js",
+            "args": [
+                "--list"
+            ]
         }
     ]
 }

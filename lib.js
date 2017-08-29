@@ -71,8 +71,8 @@ function listFilesFromAzure(callback) {
     }
     else {
         var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.listFilesAndDirectoriesSegmentedWithPrefix(accessInfo.remoteShare, '', '', null, (err, result) => {
-            callback(err, result.files);
+        azureService.listFilesAndDirectoriesSegmentedWithPrefix(accessInfo.remoteShare, '', undefined, null, (err, result) => {
+            callback(err, result.entries.files.map((fentry) => fentry.name));
         });
     }
 }
