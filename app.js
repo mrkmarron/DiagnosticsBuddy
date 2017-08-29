@@ -84,12 +84,8 @@ else if (commander.list) {
 }
 else if (commander.compress) {
     var traceDir = ensureTraceDir(commander.compress);
-    if (!commander.location) {
-        process.stderr.write('Must specify a location to write the trace using --location.\n')
-    }
-
     const startTime = new Date();
-    lib.traceCompressor(traceDir, commander.location, (err) => {
+    lib.traceCompressor(traceDir, commander.location || path.basename(traceDir) + '.trc', (err) => {
         if (err) {
             process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
