@@ -41,7 +41,18 @@ function uploadTraceAsync(resolvedPath) {
     }
 }
 
-exports.AzureManager = {
-    "uploadTraceSync": uploadTraceSync,
-    "uploadTraceAsync": uploadTraceAsync
-};
+function enableAzureUploads() {
+    const AzureManager = {
+        "uploadTraceSync": uploadTraceSync,
+        "uploadTraceAsync": uploadTraceAsync
+    };
+
+    if (process.jsEngine && process.jsEngine === 'chakracore') {
+        // load ChakraCore's trace_mgr
+        var trace_mgr = require('trace_mgr');
+        trace_mgr.setOptions({
+            remoteTraceManagerObj: AzureManager
+        });
+    }
+}
+exports.enableAzureUploads = enableAzureUploads
