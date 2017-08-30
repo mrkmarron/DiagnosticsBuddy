@@ -5,6 +5,7 @@ var async = require('async');
 var storage = require('azure-storage');
 var fs = require('fs');
 var path = require('path');
+var process = require('process');
 var zlib = require('zlib');
 
 //////////////
@@ -13,10 +14,20 @@ var zlib = require('zlib');
 function loadRemoteAccessInfo() {
     var res = undefined;
     try {
-        res = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'azureconfig.json')));
+        if (process.env.DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS) {
+            res = JSON.parse(process.env.DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS);
+        }
+        else {
+            res = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'azureconfig.json')));
+        }
     }
     catch (ex) {
         ;
+    }
+
+    if (res.remoteShare === undefined || res.remoteUser === undefined || res.storageKey === undefined) {
+        process.stderr.write(`Got invalid remote file share info: ${res}`);
+        process.exit(1);
     }
 
     return res;
