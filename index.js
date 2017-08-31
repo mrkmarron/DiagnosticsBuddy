@@ -1,12 +1,15 @@
 "use strict";
 
+var assert = require('assert');
 var path = require('path');
 var process = require('process');
 var childProcess = require('child_process');
 
+var lib = require('./lib.js');
+
 var launchExe = (process.platform === 'win32') ? 'node.exe' : 'node';
 
-function uploadTraceSync(resolvedPath, storageCredentialJSON) {
+function uploadTraceSync(resolvedPath) {
     try {
         var tracename = path.basename(resolvedPath) + '.trc';
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Sync).\n`);
@@ -23,7 +26,7 @@ function uploadTraceSync(resolvedPath, storageCredentialJSON) {
     }
 }
 
-function uploadTraceAsync(resolvedPath, storageCredentialJSON) {
+function uploadTraceAsync(resolvedPath) {
     try {
         var tracename = path.basename(path.dirname(resolvedPath)) + '_' + path.basename(resolvedPath) + '.trc'
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Async).\n`);
@@ -45,13 +48,17 @@ function uploadTraceAsync(resolvedPath, storageCredentialJSON) {
     }
 }
 
-function enableAzureUploads() {
+var storageCredentialJSON = undefined;
+
+function enableAzureUploads(credentials) {
     const AzureManager = {
         "uploadTraceSync": uploadTraceSync,
         "uploadTraceAsync": uploadTraceAsync
     };
 
-    if (process.jsEngine && process.jsEngine === 'chakracore') {
+    storageCredentialJSON = credentials || lib.loadRemoteAccessInfo();
+
+    if (process.jsEngine && process.jsEngine === 'chakracore' && lib.checkRemoteAccessInfo(storageCredentialJSON)) {
         // load ChakraCore's trace_mgr
         var trace_mgr = require('trace_mgr');
         trace_mgr.setOptions({

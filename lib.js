@@ -18,74 +18,61 @@ function loadRemoteAccessInfo() {
             res = JSON.parse(process.env.DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS);
         }
         else {
-            res = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'azureconfig.json')));
+            const moduleroot = path.dirname(require.main.filename);
+            const configPath = path.resolve(moduleroot, 'azureconfig.json');
+            res = JSON.parse(fs.readFileSync(configPath));
         }
     }
     catch (ex) {
         ;
     }
 
-    if (res.remoteShare === undefined || res.remoteUser === undefined || res.storageKey === undefined) {
-        process.stderr.write(`Got invalid remote file share info: ${res}`);
-        process.exit(1);
-    }
-
     return res;
 }
+exports.loadRemoteAccessInfo = loadRemoteAccessInfo;
 
-function uploadFileToAzure(localFile, remoteFile, callback) {
-    var accessInfo = loadRemoteAccessInfo();
-    if (!accessInfo) {
-        callback(new Error('Failed to load Azure config.'));
-    }
-    else {
-        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.createFileFromLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
-            callback(err);
-        });
-    }
+function checkRemoteAccessInfo(accessInfo) {
+    return accessInfo && (accessInfo.remoteShare && accessInfo.remoteUser && accessInfo.storageKey);
+}
+exports.checkRemoteAccessInfo = checkRemoteAccessInfo;
+
+function uploadFileToAzure(localFile, remoteFile, accessInfo, callback) {
+    assert(checkRemoteAccessInfo(accessInfo));
+
+    const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+    azureService.createFileFromLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
+        callback(err);
+    });
 }
 exports.uploadFileToAzure = uploadFileToAzure;
 
-function downloadFileFromAzure(remoteFile, localFile, callback) {
-    var accessInfo = loadRemoteAccessInfo();
-    if (!accessInfo) {
-        callback(new Error('Failed to load Azure config.'));
-    }
-    else {
-        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.getFileToLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
-            callback(err);
-        });
-    }
+function downloadFileFromAzure(remoteFile, localFile, accessInfo, callback) {
+    assert(checkRemoteAccessInfo(accessInfo));
+
+    const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+    azureService.getFileToLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
+        callback(err);
+    });
 }
 exports.downloadFileFromAzure = downloadFileFromAzure;
 
-function removeFileFromAzure(remoteFile, callback) {
-    var accessInfo = loadRemoteAccessInfo();
-    if (!accessInfo) {
-        callback(new Error('Failed to load Azure config.'));
-    }
-    else {
-        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.deleteFileIfExists(accessInfo.remoteShare, '', remoteFile, (err, result) => {
-            callback(err, result);
-        });
-    }
+function removeFileFromAzure(remoteFile, accessInfo, callback) {
+    assert(checkRemoteAccessInfo(accessInfo));
+
+    const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+    azureService.deleteFileIfExists(accessInfo.remoteShare, '', remoteFile, (err, result) => {
+        callback(err, result);
+    });
 }
 exports.removeFileFromAzure = removeFileFromAzure;
 
-function listFilesFromAzure(callback) {
-    var accessInfo = loadRemoteAccessInfo();
-    if (!accessInfo) {
-        callback(new Error('Failed to load Azure config.'));
-    }
-    else {
-        var azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-        azureService.listFilesAndDirectoriesSegmentedWithPrefix(accessInfo.remoteShare, '', undefined, null, (err, result) => {
-            callback(err, result.entries.files.map((fentry) => fentry.name));
-        });
-    }
+function listFilesFromAzure(accessInfo, callback) {
+    assert(checkRemoteAccessInfo(accessInfo));
+    
+    const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
+    azureService.listFilesAndDirectoriesSegmentedWithPrefix(accessInfo.remoteShare, '', undefined, null, (err, result) => {
+        callback(err, result.entries.files.map((fentry) => fentry.name));
+    });
 }
 exports.listFilesFromAzure = listFilesFromAzure;
 

@@ -4,10 +4,11 @@ var async = require('async');
 var commander = require('commander');
 var fs = require('fs');
 var fsextra = require('fs-extra');
-var lib = require('./lib.js');
 var path = require('path');
 var process = require('process');
 var tmp = require('tmp');
+
+var lib = require('./lib.js');
 
 commander
     .version('0.0.1')
@@ -21,10 +22,21 @@ commander
     .option('--location <location>', 'Specify the directory name to download a diagnostics trace.')
     .parse(process.argv);
 
+var accessCredentials = lib.loadRemoteAccessInfo();
+
+function ensureCredentials() {
+    if(!lib.checkRemoteAccessInfo(accessCredentials)) {
+        process.stderr.write(`Access credentials not found or invlaid: ${accessCredentials}\n`);
+        process.exit(1);
+    }
+}
+
 if (commander.upload) {
+    ensureCredentials();
+
     var traceDir = ensureTraceDir(commander.upload);
     const startTime = new Date();
-    processTraceUpload(traceDir, commander.location, (err) => {
+    processTraceUpload(traceDir, commander.location, accessCredentials, (err) => {
         if (err) {
             process.stderr.write('Failed to upload trace: ' + err + '\n');
             process.exit(1);
@@ -35,11 +47,13 @@ if (commander.upload) {
     });
 }
 else if (commander.download) {
+    ensureCredentials();
+
     var remoteFileName = commander.download;
     var targetDir = ensureTraceTargetDir(commander.location);
     if (targetDir) {
         const startTime = new Date();
-        processTraceDownload(remoteFileName, targetDir, (err) => {
+        processTraceDownload(remoteFileName, targetDir, accessCredentials, (err) => {
             if (err) {
                 process.stderr.write('Failed to upload trace: ' + err + '\n');
                 process.exit(1);
@@ -55,13 +69,15 @@ else if (commander.download) {
     }
 }
 else if (commander.remove) {
-    lib.removeFileFromAzure(commander.remove, (err, result) => {
+    ensureCredentials();
+
+    lib.removeFileFromAzure(commander.remove, accessCredentials, (err, result) => {
         if (err) {
             process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
         }
 
-        if(result) {
+        if (result) {
             process.stdout.write(`Deleted trace.\n`);
         }
         else {
@@ -70,7 +86,9 @@ else if (commander.remove) {
     });
 }
 else if (commander.list) {
-    lib.listFilesFromAzure((err, files) => {
+    ensureCredentials();
+    
+    lib.listFilesFromAzure(accessCredentials,(err, files) => {
         if (err) {
             process.stderr.write('Failed with error: ' + err + '\n');
             process.exit(1);
