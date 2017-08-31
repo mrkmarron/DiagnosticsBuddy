@@ -40,7 +40,7 @@ function uploadFileToAzure(localFile, remoteFile, accessInfo, callback) {
     assert(checkRemoteAccessInfo(accessInfo));
 
     const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-    azureService.createFileFromLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
+    azureService.createFileFromLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err) => {
         callback(err);
     });
 }
@@ -50,7 +50,7 @@ function downloadFileFromAzure(remoteFile, localFile, accessInfo, callback) {
     assert(checkRemoteAccessInfo(accessInfo));
 
     const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
-    azureService.getFileToLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err, res) => {
+    azureService.getFileToLocalFile(accessInfo.remoteShare, '', remoteFile, localFile, (err) => {
         callback(err);
     });
 }
@@ -104,7 +104,7 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
             headerInfo += hval;
         }
 
-        function writeFinalHeaders(file, cb) {
+        function writeFinalHeaders() {
             fs.open(targetFile, 'a', (wfherr, fd) => {
                 if (wfherr) { return completeCallBack(wfherr); }
 
