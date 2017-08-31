@@ -189,7 +189,7 @@ function ensureTraceTargetDir(optTargetDirName) {
 }
 
 //Do the processing for the trace upload
-function processTraceUpload(traceDirName, remoteName, completecallback) {
+function processTraceUpload(traceDirName, remoteName, accessCredentials, completecallback) {
     tmp.file({ postfix: '.trc' }, (err, tempfile) => {
         if (err) { return completecallback(err) };
 
@@ -200,7 +200,7 @@ function processTraceUpload(traceDirName, remoteName, completecallback) {
                 lib.traceCompressor(traceDirName, tempfile, callback);
             },
             function (callback) {
-                lib.uploadFileToAzure(tempfile, remoteFile, callback);
+                lib.uploadFileToAzure(tempfile, remoteFile, accessCredentials, callback);
             }
         ];
 
@@ -208,14 +208,14 @@ function processTraceUpload(traceDirName, remoteName, completecallback) {
     });
 }
 
-function processTraceDownload(remoteFileName, targetDir, completecallback) {
+function processTraceDownload(remoteFileName, targetDir, accessCredentials, completecallback) {
     //tmp cleans up automatically on completion
     tmp.file({ postfix: '.trc' }, (err, tempfile) => {
         if (err) { return completecallback(err) };
 
         var actionPipeline = [
             function (callback) {
-                lib.downloadFileFromAzure(path.basename(remoteFileName), tempfile, callback);
+                lib.downloadFileFromAzure(path.basename(remoteFileName), tempfile, accessCredentials, callback);
             },
             function (callback) {
                 lib.traceDecompressor(tempfile, targetDir, callback);
