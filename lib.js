@@ -86,32 +86,27 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
         if (direrr) { return completeCallBack(direrr); }
 
         const headerblockLength = 32 + compressFiles.length * headerEntrySize;
-        let headerInfo = compressFiles.length.toString();
-        while (headerInfo.length < 32 - 1) {
-            headerInfo += ' ';
-        }
-        headerInfo += '\n';
+        let headerInfo = compressFiles.length.toString().padEnd(31) + '\n';
 
         function extendHeader(file, startPos, length) {
-            let hval = path.basename(file) + ' ' + startPos + ' ' + length;
-            assert(hval.length < headerEntrySize - 1);
-
-            while (hval.length < headerEntrySize - 1) {
-                hval += ' ';
-            }
-            hval += '\n';
-
+            let hval = (path.basename(file) + ' ' + startPos + ' ' + length).padEnd(headerEntrySize - 1) + '\n';
             headerInfo += hval;
         }
 
         function writeFinalHeaders() {
-            fs.open(targetFile, 'a', (wfherr, fd) => {
+            fs.open(targetFile, 'r+', (wfherr, fd) => {
                 if (wfherr) { return completeCallBack(wfherr); }
 
                 const headerBuff = new Buffer(headerInfo);
                 assert(headerBuff.length === headerInfo.length && headerInfo.length === headerblockLength);
 
-                fs.write(fd, headerBuff, 0, headerBuff.length, 0, completeCallBack);
+                fs.write(fd, headerBuff, 0, headerBuff.length, 0, (hwerr, hbytes) => {
+                    if (hwerr) { return completeCallBack(hwerr); }
+
+                    fs.close(fd, (closeerr) => {
+                        completeCallBack(closeerr);
+                    });
+                });
             });
         }
 

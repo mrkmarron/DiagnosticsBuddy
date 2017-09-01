@@ -10,8 +10,8 @@
             "name": "Launch Compress",
             "program": "${workspaceRoot}/app.js",
             "args": [
-                "--compress", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt/",
-                "--location", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt.trc"
+                "--compress", "C:\\Users\\marron\\Desktop\\logScratch\\",
+                "--location", "C:\\Users\\marron\\Desktop\\logScratch.trc"
             ]
         },
         {
@@ -20,8 +20,8 @@
             "name": "Launch Decompress",
             "program": "${workspaceRoot}/app.js",
             "args": [
-                "--decompress", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt.trc",
-                "--location", "/Users/marron/Desktop/RFSDemo/_diagnosticTraces/emitOnSigInt_extracted"
+                "--decompress", "C:\\Users\\marron\\Desktop\\logScratch.trc",
+                "--location", "C:\\Users\\marron\\Desktop\\logScratch_restore\\"
             ]
         },
         {
