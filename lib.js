@@ -68,7 +68,7 @@ exports.removeFileFromAzure = removeFileFromAzure;
 
 function listFilesFromAzure(accessInfo, callback) {
     assert(checkRemoteAccessInfo(accessInfo));
-    
+
     const azureService = storage.createFileService(accessInfo.remoteUser, accessInfo.storageKey);
     azureService.listFilesAndDirectoriesSegmentedWithPrefix(accessInfo.remoteShare, '', undefined, null, (err, result) => {
         callback(err, result.entries.files.map((fentry) => fentry.name));
@@ -147,7 +147,7 @@ function traceCompressor(traceDir, targetFile, completeCallBack) {
                 function (err) {
                     if (err) { return completeCallBack(err); }
 
-                    writeFinalHeaders(targetFile, completeCallBack);
+                    writeFinalHeaders();
                 }
             );
         });
@@ -165,7 +165,7 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
                 if (sizeerr) { return cb(sizeerr); }
 
                 const headerblockCount = Number.parseInt(sizebuff.toString());
-                if (headerblockCount === NaN) { return cb(new Error('Failed to parse header info')); }
+                if (Number.isNaN(headerblockCount)) { return cb(new Error('Failed to parse header info')); }
 
                 const headerblockLength = 32 + headerblockCount * headerEntrySize;
                 const pheadersBuff = new Buffer(headerblockLength);
@@ -177,7 +177,7 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
                         const components = headerStr.split(/\s+/);
                         const startNumber = Number.parseInt(components[1]);
                         const lengthNumber = Number.parseInt(components[2]);
-                        if (startNumber === NaN || lengthNumber === NaN) { return cb(new Error('Failed to parse file entry.')); }
+                        if (Number.isNaN(startNumber) || Number.isNaN(lengthNumber)) { return cb(new Error('Failed to parse file entry.')); }
 
                         return { file: components[0], startOffset: startNumber, length: lengthNumber };
                     });
@@ -207,6 +207,8 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
     }
 
     extractHeaderInfo((err, headers) => {
+        if (err) { return completeCallBack(err); }
+
         const filecbArray = headers.map((header) => {
             return function (cb) {
                 extractFile(header, cb);
@@ -215,8 +217,8 @@ function traceDecompressor(traceFile, targetDir, completeCallBack) {
 
         async.series(
             filecbArray,
-            function (err) {
-                return completeCallBack(err);
+            function (serr) {
+                return completeCallBack(serr);
             }
         );
     });

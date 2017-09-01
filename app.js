@@ -55,7 +55,7 @@ else if (commander.download) {
         const startTime = new Date();
         processTraceDownload(remoteFileName, targetDir, accessCredentials, (err) => {
             if (err) {
-                process.stderr.write('Failed to upload trace: ' + err + '\n');
+                process.stderr.write('Failed to download trace: ' + err + '\n');
                 process.exit(1);
             }
             else {

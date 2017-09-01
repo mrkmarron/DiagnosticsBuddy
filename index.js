@@ -1,11 +1,10 @@
 "use strict";
 
 var assert = require('assert');
+var fs = require('fs');
 var path = require('path');
 var process = require('process');
 var childProcess = require('child_process');
-
-var lib = require('./lib.js');
 
 var launchExe = (process.platform === 'win32') ? 'node.exe' : 'node';
 
@@ -14,7 +13,7 @@ function uploadTraceSync(resolvedPath) {
         var tracename = path.basename(resolvedPath) + '.trc';
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Sync).\n`);
         var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} --upload ${resolvedPath}`;
-        var envval = storageCredentialJSON ? { DO_TTD_RECORD: 0, DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS: storageCredentialJSON } : { DO_TTD_RECORD: 0 };
+        var envval = storageCredentialJSON ? { DO_TTD_RECORD: 0, DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS: JSON.stringify(storageCredentialJSON) } : { DO_TTD_RECORD: 0 };
 
         var startTime = new Date();
         childProcess.execSync(cmd, { env: envval });
@@ -31,7 +30,7 @@ function uploadTraceAsync(resolvedPath) {
         var tracename = path.basename(path.dirname(resolvedPath)) + '_' + path.basename(resolvedPath) + '.trc'
         process.stderr.write(`    Uploading ${resolvedPath} to ${tracename} in Azure storage (Async).\n`);
         var cmd = `${launchExe} ${path.resolve(__dirname, 'app.js')} --upload ${resolvedPath} --location ${tracename}`;
-        var envval = storageCredentialJSON ? { DO_TTD_RECORD: 0, DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS: storageCredentialJSON } : { DO_TTD_RECORD: 0 };
+        var envval = storageCredentialJSON ? { DO_TTD_RECORD: 0, DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS: JSON.stringify(storageCredentialJSON) } : { DO_TTD_RECORD: 0 };
 
         var startTime = new Date();
         childProcess.exec(cmd, { env: envval }, function (err, stdout, stderr) {
@@ -56,14 +55,42 @@ function enableAzureUploads(credentials) {
         "uploadTraceAsync": uploadTraceAsync
     };
 
-    storageCredentialJSON = credentials || lib.loadRemoteAccessInfo();
+    storageCredentialJSON = credentials || loadRemoteAccessInfo();
 
-    if (process.jsEngine && process.jsEngine === 'chakracore' && lib.checkRemoteAccessInfo(storageCredentialJSON)) {
-        // load ChakraCore's trace_mgr
-        var trace_mgr = require('trace_mgr');
-        trace_mgr.setOptions({
-            remoteTraceManagerObj: AzureManager
-        });
+    if (process.jsEngine && process.jsEngine === 'chakracore') {
+        if (!checkRemoteAccessInfo(storageCredentialJSON)) {
+            process.stdout.write(`No cloud credentials found -- only local traces will be written.\n`);
+        }
+        else {
+            require('trace_mgr').setOptions({
+                remoteTraceManagerObj: AzureManager
+            });
+        }
     }
 }
 exports.enableAzureUploads = enableAzureUploads
+
+function loadRemoteAccessInfo() {
+    var res = undefined;
+    try {
+        if (process.env.DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS) {
+            res = JSON.parse(process.env.DIAGNOSTICS_BUDDY_STORAGE_CREDENTIALS);
+        }
+        else {
+            const moduleroot = path.dirname(require.main.filename);
+            const configPath = path.resolve(moduleroot, 'azureconfig.json');
+
+            const contents = fs.readFileSync(configPath);
+            res = JSON.parse(contents);
+        }
+    }
+    catch (ex) {
+        ;
+    }
+
+    return res;
+}
+
+function checkRemoteAccessInfo(accessInfo) {
+    return accessInfo && (accessInfo.remoteShare && accessInfo.remoteUser && accessInfo.storageKey);
+}
