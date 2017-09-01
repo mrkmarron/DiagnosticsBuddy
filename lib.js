@@ -32,7 +32,15 @@ function loadRemoteAccessInfo() {
 exports.loadRemoteAccessInfo = loadRemoteAccessInfo;
 
 function checkRemoteAccessInfo(accessInfo) {
-    return accessInfo && (accessInfo.remoteShare && accessInfo.remoteUser && accessInfo.storageKey);
+    if(accessInfo === undefined) {
+        return false;
+    }
+
+    if (accessInfo.remoteShare === undefined || accessInfo.remoteUser === undefined || accessInfo.storageKey === undefined) {
+        return false;
+    }
+
+    return accessInfo.storageKey !== '[Storage Key]';
 }
 exports.checkRemoteAccessInfo = checkRemoteAccessInfo;
 

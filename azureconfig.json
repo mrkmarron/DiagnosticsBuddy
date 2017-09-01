@@ -1,5 +1,5 @@
 {
-    "remoteShare": "[Your remote file share name here]",
-    "remoteUser":  "[Your remote user name here]",
-    "storageKey":  "[Your remote storage key here]"
+    "remoteShare": "[Share Name]",
+    "remoteUser": "[User Name]",
+    "storageKey": "[Storage Key]"
 }
