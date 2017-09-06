@@ -36,7 +36,6 @@ function uploadTraceAsync(resolvedPath) {
         childProcess.exec(cmd, { env: envval }, function (err, stdout, stderr) {
             if (err) {
                 process.stderr.write(`Failed to upload ${cmd} -- err is ${err} stderr is ${stderr} stdout is ${stdout}\n`);
-                process.exit(1);
             }
 
             process.stderr.write(`Completed upload of ${resolvedPath} in ${(new Date() - startTime) / 1000}s.\n`);
